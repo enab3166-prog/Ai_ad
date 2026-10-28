@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AI Ad Agent</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#0e1118;color:#f5f7fb;font-family:Arial,Tahoma,sans-serif}
+.wrap{max-width:1000px;margin:auto;padding:16px}.card{background:#181d27;border:1px solid #2b3342;border-radius:18px;padding:16px;margin-bottom:14px}
+h1{margin:0 0 5px}.muted{color:#9ca6b8}.tabs{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}.tab,button{border:0;border-radius:12px;padding:11px 15px;background:#293143;color:#fff;font-weight:700;cursor:pointer}.tab.active,.primary{background:#7355ff}
+.panel{display:none}.panel.active{display:block}textarea,input,select{width:100%;background:#0e1219;color:#fff;border:1px solid #343d4e;border-radius:12px;padding:12px;margin-top:7px}textarea{min-height:140px;line-height:1.7}.row{display:grid;grid-template-columns:1fr 1fr;gap:10px}@media(max-width:650px){.row{grid-template-columns:1fr}}
+.messages{min-height:280px;max-height:55vh;overflow:auto;background:#0b0e14;border-radius:14px;padding:12px}.msg{padding:11px 13px;border-radius:14px;margin:8px 0;white-space:pre-wrap;line-height:1.65}.me{background:#2b2450;margin-right:15%}.ai{background:#202732;margin-left:10%}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.preview{max-width:100%;max-height:260px;display:none;border-radius:12px;margin-top:10px}.status{padding:10px;background:#10151d;border-radius:10px;margin-top:9px;color:#b8c1d2}
+</style>
+</head>
+<body><div class="wrap">
+<div class="card"><h1>🤖 AI Ad Agent</h1><div class="muted">مساعد تسويق + تحليل صورة المنتج + سيناريو + تجهيز فيديو</div>
+<div class="tabs"><button class="tab active" data-p="chat">💬 التحدث مع AI</button><button class="tab" data-p="ad">🎬 إعلان من صورة</button></div></div>
+
+<div id="chat" class="panel active card"><div id="messages" class="messages"><div class="msg ai">مرحباً 👋 أنا مساعدك التسويقي. أرسل لي صورة المنتج أو اسألني عن الإعلان، السعر، الجمهور، Hook، الكابشن أو فكرة الفيديو.</div></div>
+<label>صورة اختيارية</label><input id="chatImage" type="file" accept="image/*">
+<label>رسالتك</label><textarea id="chatText" placeholder="مثال: حلل هذا المنتج واكتب لي إعلان عراقي قوي لمدة 15 ثانية..."></textarea>
+<div class="actions"><button class="primary" id="send">إرسال إلى AI</button></div><div id="chatStatus" class="status"></div></div>
+
+<div id="ad" class="panel card">
+<label>صورة المنتج</label><input id="adImage" type="file" accept="image/*"><img id="preview" class="preview">
+<div class="row"><div><label>الفئة</label><select id="cat"><option>عطر</option><option>مكياج</option><option>عناية بالبشرة</option><option>عناية بالشعر</option><option>منتج آخر</option></select></div>
+<div><label>المدة</label><select id="dur"><option>5</option><option>10</option><option>15</option></select></div></div>
+<label>الأسلوب</label><select id="style"><option>تلقائي</option><option>حوار</option><option>مضحك</option><option>درامي</option><option>عاطفي</option><option>فاخر</option><option>UGC</option><option>ترند</option><option>بيع مباشر</option></select>
+<div class="actions"><button class="primary" id="script">✨ تحليل الصورة وكتابة الإعلان</button><button id="video">🎥 إنشاء الفيديو</button></div>
+<textarea id="result" placeholder="ستظهر النتيجة هنا..."></textarea><div id="adStatus" class="status"></div>
+</div>
+</div>
+<script>
+const $=id=>document.getElementById(id);
+document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));b.classList.add('active');document.querySelectorAll('.panel').forEach(x=>x.classList.remove('active'));$(b.dataset.p).classList.add('active')});
+$('adImage').onchange=e=>{let f=e.target.files[0];if(f){$('preview').src=URL.createObjectURL(f);$('preview').style.display='block'}};
+function add(text,cls){let d=document.createElement('div');d.className='msg '+cls;d.textContent=text;$('messages').appendChild(d);$('messages').scrollTop=$('messages').scrollHeight}
+$('send').onclick=async()=>{let text=$('chatText').value.trim(),f=$('chatImage').files[0];if(!text&&!f)return;add(text||'[صورة المنتج]','me');$('chatText').value='';$('chatStatus').textContent='⏳ جاري التفكير...';let fd=new FormData();fd.append('message',text);if(f)fd.append('image',f);try{let r=await fetch('/api/chat',{method:'POST',body:fd});let j=await r.json();if(!r.ok)throw Error(j.error);add(j.answer,'ai');$('chatStatus').textContent='✓ تم';}catch(e){$('chatStatus').textContent='❌ '+e.message}};
+$('script').onclick=async()=>{let f=$('adImage').files[0];if(!f){$('adStatus').textContent='اختر صورة أولاً';return}let fd=new FormData();fd.append('image',f);fd.append('category',$('cat').value);fd.append('style',$('style').value);fd.append('duration',$('dur').value);fd.append('dialect','عراقي');$('adStatus').textContent='⏳ جاري تحليل الصورة...';try{let r=await fetch('/api/script',{method:'POST',body:fd});let j=await r.json();if(!r.ok)throw Error(j.error);$('result').value=j.answer;$('adStatus').textContent='✓ تم إنشاء الإعلان';}catch(e){$('adStatus').textContent='❌ '+e.message}};
+$('video').onclick=async()=>{let f=$('adImage').files[0];if(!f){$('adStatus').textContent='اختر صورة أولاً';return}let prompt=$('result').value||'إعلان منتج احترافي قصير. حافظ على شكل المنتج وتفاصيل العبوة والألوان والنصوص كما في الصورة المرجعية. حركة كاميرا ناعمة وإضاءة فاخرة.';let fd=new FormData();fd.append('image',f);fd.append('prompt',prompt);fd.append('duration',$('dur').value);fd.append('ratio','720:1280');$('adStatus').textContent='⏳ جاري إرسال الفيديو إلى مولّد الفيديو...';try{let r=await fetch('/api/video',{method:'POST',body:fd});let j=await r.json();if(!r.ok)throw Error(j.error);$('adStatus').textContent='✓ تم إنشاء مهمة الفيديو. Task ID: '+(j.task?.id||'غير متاح');}catch(e){$('adStatus').textContent='❌ '+e.message}};
+</script></body></html>
