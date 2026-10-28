@@ -1,0 +1,209 @@
+
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#111827">
+  <title>AI Ad Maker PRO</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #0b1020;
+      color: #f8fafc;
+      line-height: 1.7;
+    }
+    header {
+      text-align: center;
+      padding: 28px 16px;
+      background: linear-gradient(135deg, #312e81, #7c3aed);
+    }
+    header h1 { margin: 0; font-size: 28px; }
+    header p { margin: 8px 0 0; color: #e9d5ff; }
+    main { max-width: 720px; margin: auto; padding: 18px; }
+    .card {
+      background: #151c30;
+      border: 1px solid #29334c;
+      border-radius: 16px;
+      padding: 18px;
+      margin-bottom: 18px;
+    }
+    label {
+      display: block;
+      margin: 14px 0 6px;
+      font-weight: bold;
+    }
+    input, textarea, select {
+      width: 100%;
+      padding: 12px;
+      border: 1px solid #374151;
+      border-radius: 10px;
+      background: #0b1020;
+      color: white;
+      font-size: 16px;
+    }
+    textarea { min-height: 110px; resize: vertical; }
+    input[type="file"] { font-size: 14px; }
+    button {
+      width: 100%;
+      margin-top: 16px;
+      padding: 14px;
+      border: 0;
+      border-radius: 10px;
+      background: #8b5cf6;
+      color: white;
+      font-size: 17px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+    button:disabled { opacity: .6; }
+    #result {
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      min-height: 60px;
+    }
+    .muted { color: #aab4ca; font-size: 14px; }
+    .status { color: #c4b5fd; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>AI Ad Maker PRO</h1>
+    <p>مساعدك الذكي لصناعة إعلانات المنتجات</p>
+  </header>
+
+  <main>
+    <section class="card">
+      <h2>🎯 أنشئ إعلانك</h2>
+      <p class="muted">أرفق صورة المنتج واكتب ما تريد إنشاءه.</p>
+
+      <form id="adForm">
+        <label for="image">صورة المنتج</label>
+        <input id="image" name="image" type="file"
+               accept="image/*">
+
+        <label for="message">ماذا تريد من الذكاء الاصطناعي؟</label>
+        <textarea id="message" name="message"
+          placeholder="مثال: اكتب إعلانًا باللهجة العراقية لعطر نسائي، مع بداية جذابة ودعوة للشراء."></textarea>
+
+        <label for="category">فئة المنتج</label>
+        <select id="category" name="category">
+          <option>عطور</option>
+          <option>مكياجات</option>
+          <option>العناية بالبشرة</option>
+          <option>العناية بالشعر</option>
+          <option>منتج آخر</option>
+        </select>
+
+        <label for="style">أسلوب الإعلان</label>
+        <select id="style" name="style">
+          <option>تلقائي</option>
+          <option>فاخر</option>
+          <option>عاطفي</option>
+          <option>كوميدي</option>
+          <option>مباشر للبيع</option>
+          <option>ترند إنستغرام</option>
+        </select>
+
+        <label for="duration">مدة الإعلان</label>
+        <select id="duration" name="duration">
+          <option value="8">8 ثوانٍ</option>
+          <option value="15" selected>15 ثانية</option>
+          <option value="30">30 ثانية</option>
+        </select>
+
+        <label for="dialect">اللهجة</label>
+        <select id="dialect" name="dialect">
+          <option>عراقي</option>
+          <option>عربي فصيح</option>
+          <option>خليجي</option>
+          <option>مصري</option>
+        </select>
+
+        <button id="submitBtn" type="submit">✨ إنشاء الإعلان بالذكاء الاصطناعي</button>
+      </form>
+    </section>
+
+    <section class="card">
+      <h2>🪄 نتيجة الإعلان</h2>
+      <p id="status" class="status">جاهز لاستقبال طلبك.</p>
+      <div id="result">ستظهر نتيجة الإعلان هنا.</div>
+      <button id="copyBtn" type="button">نسخ النتيجة</button>
+    </section>
+
+    <section class="card">
+      <h3>ماذا يقدم التطبيق؟</h3>
+      <p>• كتابة نصوص إعلانية باللهجة العراقية.</p>
+      <p>• تحليل صورة المنتج عند دعم النموذج لذلك.</p>
+      <p>• اقتراح مشاهد وكابشن وهاشتاغات.</p>
+      <p>• إعداد وصف جاهز لمولدات الفيديو.</p>
+      <p class="muted">توليد الفيديو الفعلي يحتاج إلى خدمة فيديو ومفتاح API صالح.</p>
+    </section>
+  </main>
+
+  <script>
+    const form = document.getElementById("adForm");
+    const statusEl = document.getElementById("status");
+    const resultEl = document.getElementById("result");
+    const submitBtn = document.getElementById("submitBtn");
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+
+      const message = document.getElementById("message").value.trim();
+      const image = document.getElementById("image").files[0];
+
+      if (!message && !image) {
+        statusEl.textContent = "اكتب طلبك أو أرفق صورة المنتج أولاً.";
+        return;
+      }
+
+      const data = new FormData();
+      data.append("message", message);
+      data.append("category", document.getElementById("category").value);
+      data.append("style", document.getElementById("style").value);
+      data.append("duration", document.getElementById("duration").value);
+      data.append("dialect", document.getElementById("dialect").value);
+      if (image) data.append("image", image);
+
+      submitBtn.disabled = true;
+      statusEl.textContent = "جارٍ إنشاء الإعلان...";
+      resultEl.textContent = "";
+
+      try {
+        const response = await fetch("/api/script", {
+          method: "POST",
+          body: data
+        });
+
+        const payload = await response.json();
+
+        if (!response.ok) {
+          throw new Error(payload.error || "تعذر إنشاء الإعلان.");
+        }
+
+        resultEl.textContent = payload.answer || "لم تصل نتيجة من الخادم.";
+        statusEl.textContent = "تم استلام النتيجة.";
+      } catch (error) {
+        statusEl.textContent = "حدث خطأ";
+        resultEl.textContent =
+          error.message + "\nتأكد من إعداد الخادم ومفتاح OpenRouter.";
+      } finally {
+        submitBtn.disabled = false;
+      }
+    });
+
+    document.getElementById("copyBtn").addEventListener("click", async () => {
+      const text = resultEl.textContent;
+      try {
+        await navigator.clipboard.writeText(text);
+        statusEl.textContent = "تم نسخ النتيجة.";
+      } catch {
+        statusEl.textContent = "تعذر النسخ تلقائيًا؛ حدّد النص وانسخه يدويًا.";
+      }
+    });
+  </script>
+</body>
+</html>
