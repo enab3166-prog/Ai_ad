@@ -1,169 +1,195 @@
-import express from "express";
-import multer from "multer";
-import dotenv from "dotenv";
-import fs from "fs";
-import path from "path";
 
-dotenv.config();
+const SYSTEM = `أنت AI Ad Maker PRO، مساعد تسويق ذكي لجميع المتاجر والأنشطة التجارية.
+ساعد المستخدم في تسويق أي منتج أو خدمة، وكتابة إعلانات جذابة.
+حلل صور المنتجات بدقة، ولا تخترع معلومات أو أسعاراً أو مكونات غير معروفة.
+اكتب باللهجة أو اللغة التي يطلبها المستخدم.
+أنشئ Hook جذاباً، ومشاهد وحواراً عند الحاجة، ودعوة واضحة للشراء (CTA)، وكابشن وهاشتاغات.
+عند إعداد إعلان فيديو، اقترح مدة 8 أو 15 أو 30 ثانية حسب طلب المستخدم.
+عند كتابة برومبت فيديو، اطلب الحفاظ على شكل المنتج ولونه وعبوته وشعاره والنصوص الظاهرة في صورة المرجع.
+لا تدّعِ إنشاء فيديو فعلياً ما لم يتم استخدام خدمة توليد فيديو بنجاح.`;
 
-const app = express();
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
-
-app.use(express.json({ limit: "8mb" }));
-app.use(express.urlencoded({ extended: true, limit: "8mb" }));
-app.use(express.static("public"));
-
-const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
-
-function dataUri(file) {
-  if (!file) return null;
-  const mime = file.mimetype || "image/jpeg";
-  return `data:${mime};base64,${file.buffer.toString("base64")}`;
-}
-
-const SYSTEM = `أنت AI Ad Agent لمتجر إلكتروني اسمه متجر بطوطة.
-المتجر يبيع العطور والمكياجات ومنتجات العناية بالبشرة والشعر.
-مهمتك مساعدة صاحب المتجر في:
-1) تحليل صورة المنتج ووصفه بدقة دون اختراع معلومات غير ظاهرة.
-2) كتابة إعلانات قصيرة باللهجة العراقية أو العربية حسب الطلب.
-3) اقتراح أفكار فيديوهات إعلانية، مشاهد، حوار، Hook، CTA.
-4) اقتراح كابشن وهاشتاغات.
-5) تحسين الإعلان لمدد 8 أو 15 أو 30 ثانية.
-6) الحفاظ على ثبات صورة المنتج وشكله ولونه وتفاصيله عند كتابة prompts للفيديو.
-7) إذا سأل المستخدم عن التسويق، أعطه اقتراحاً عملياً ومباشراً.
-لا تدّعي أنك أنشأت فيديو فعلياً إلا إذا تم استدعاء أداة الفيديو بنجاح.
-عند إنشاء prompt للفيديو، أضف تعليمات واضحة: استخدم صورة المنتج كمرجع ثابت ولا تغيّر شكل المنتج أو العبوة أو الألوان أو النصوص الموجودة عليها.`;
-
-async function openrouter(messages) {
-  if (!process.env.OPENROUTER_API_KEY) {
-    throw new Error("OPENROUTER_API_KEY غير مضبوط على الخادم.");
-  }
-  const r = await fetch(OPENROUTER_URL, {
-    method: "POST",
+function json(data, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
     headers: {
-      "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
-      "Content-Type": "application/json",
-      "HTTP-Referer": "https://ai-ad-agent.local",
-      "X-Title": "AI Ad Agent"
-    },
-    body: JSON.stringify({
-      model: process.env.OPENROUTER_MODEL || "openrouter/free",
-      messages,
-      temperature: 0.8
-    })
+      "Content-Type": "application/json; charset=utf-8"
+    }
   });
-  const text = await r.text();
-  if (!r.ok) throw new Error(`OpenRouter ${r.status}: ${text.slice(0,800)}`);
-  const data = JSON.parse(text);
-  return data?.choices?.[0]?.message?.content || "لم يرجع النموذج نصاً.";
 }
 
-app.get("/api/health", (req,res)=>res.json({
-  ok:true,
-  openrouter:!!process.env.OPENROUTER_API_KEY,
-  runway:!!process.env.RUNWAY_API_KEY,
-  model:process.env.OPENROUTER_MODEL || "openrouter/free"
-}));
+async function imageDataUri(file) {
+  if (!file || !file.size) return null;
 
-// دردشة Agent Pro: نص + صورة اختيارية
-app.post("/api/chat", upload.single("image"), async (req,res)=>{
-  try {
-    const userText = (req.body.message || "").trim();
-    if (!userText && !req.file) return res.status(400).json({error:"اكتب رسالة أو أرفق صورة."});
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  let binary = "";
+  const chunkSize = 8192;
 
-    const content = [];
-    if (userText) content.push({type:"text", text:userText});
-    if (req.file) content.push({type:"image_url", image_url:{url:dataUri(req.file)}});
-
-    const answer = await openrouter([
-      {role:"system", content:SYSTEM},
-      {role:"user", content}
-    ]);
-    res.json({answer});
-  } catch(e) {
-    res.status(500).json({error:e.message});
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(
+      ...bytes.subarray(i, i + chunkSize)
+    );
   }
-});
 
-// إنشاء سيناريو من صورة المنتج
-app.post("/api/script", upload.single("image"), async (req,res)=>{
-  try {
-    if (!req.file) return res.status(400).json({error:"أرسل صورة المنتج."});
-    const category=req.body.category||"منتج";
-    const style=req.body.style||"تلقائي";
-    const duration=req.body.duration||"15";
-    const dialect=req.body.dialect||"عراقي";
-    const prompt=`حلّل صورة المنتج ثم اكتب سيناريو إعلان مدته ${duration} ثانية.
-الفئة: ${category}
-الأسلوب: ${style}
-اللهجة: ${dialect}
-أريد Hook في البداية، مشاهد مختصرة، الحوار إن وجد، CTA في النهاية، ثم Caption و5-10 هاشتاغات.
-لا تخترع اسم المنتج أو سعره أو مكوناته إذا لم تظهر في الصورة.
-أضف Prompt جاهز لمولّد فيديو مع ثبات المنتج.`;
-    const answer=await openrouter([
-      {role:"system",content:SYSTEM},
-      {role:"user",content:[
-        {type:"text",text:prompt},
-        {type:"image_url",image_url:{url:dataUri(req.file)}}
-      ]}
-    ]);
-    res.json({answer});
-  } catch(e) {
-    res.status(500).json({error:e.message});
+  return `data:${file.type || "image/jpeg"};base64,${btoa(binary)}`;
+}
+
+async function askAI(env, content) {
+  if (!env.OPENROUTER_API_KEY) {
+    throw new Error(
+      "لم تتم إضافة مفتاح OpenRouter إلى إعدادات Cloudflare."
+    );
   }
-});
 
-// توليد فيديو عبر Runway. الصورة ترسل كـ data URI (حد Runway للـ data URI هو 5MB).
-app.post("/api/video", upload.single("image"), async (req,res)=>{
-  try {
-    if (!process.env.RUNWAY_API_KEY) return res.status(400).json({error:"RUNWAY_API_KEY غير مضبوط. أضفه في Environment Variables."});
-    if (!req.file) return res.status(400).json({error:"أرسل صورة المنتج."});
-
-    const promptText = req.body.prompt || "Create a polished social-media product advertisement. Preserve the exact product appearance, packaging, colors, logo and visible text from the reference image. Smooth camera movement, premium lighting, realistic motion.";
-    const duration = [5,10,15].includes(Number(req.body.duration)) ? Number(req.body.duration) : 5;
-    const ratio = req.body.ratio || "720:1280";
-
-    const rr = await fetch("https://api.dev.runwayml.com/v1/image_to_video", {
-      method:"POST",
-      headers:{
-        "Authorization":`Bearer ${process.env.RUNWAY_API_KEY}`,
-        "X-Runway-Version":"2024-11-06",
-        "Content-Type":"application/json"
+  const response = await fetch(
+    "https://openrouter.ai/api/v1/chat/completions",
+    {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${env.OPENROUTER_API_KEY}`,
+        "Content-Type": "application/json",
+        "X-Title": "AI Ad Maker PRO"
       },
-      body:JSON.stringify({
-        model:process.env.RUNWAY_MODEL || "gen4.5",
-        promptImage:dataUri(req.file),
-        promptText,
-        ratio,
-        duration
+      body: JSON.stringify({
+        model: env.OPENROUTER_MODEL || "openrouter/free",
+        messages: [
+          { role: "system", content: SYSTEM },
+          { role: "user", content }
+        ],
+        temperature: 0.7
       })
-    });
-    const t=await rr.text();
-    if(!rr.ok) return res.status(rr.status).json({error:`Runway ${rr.status}: ${t.slice(0,800)}`});
-    const task=JSON.parse(t);
-    res.json({task});
-  } catch(e) {
-    res.status(500).json({error:e.message});
+    }
+  );
+
+  const result = await response.json();
+
+  if (!response.ok) {
+    throw new Error(
+      result?.error?.message ||
+      "تعذر الاتصال بخدمة الذكاء الاصطناعي."
+    );
   }
-});
 
-app.get("/api/video/:id", async (req,res)=>{
-  try {
-    if(!process.env.RUNWAY_API_KEY) return res.status(400).json({error:"RUNWAY_API_KEY غير مضبوط."});
-    const rr=await fetch(`https://api.dev.runwayml.com/v1/tasks/${encodeURIComponent(req.params.id)}`,{
-      headers:{
-        "Authorization":`Bearer ${process.env.RUNWAY_API_KEY}`,
-        "X-Runway-Version":"2024-11-06"
+  return result?.choices?.[0]?.message?.content ||
+    "لم يرجع النموذج نتيجة.";
+}
+
+export default {
+  async fetch(request, env) {
+    const url = new URL(request.url);
+
+    if (
+      request.method === "GET" &&
+      url.pathname === "/api/health"
+    ) {
+      return json({
+        ok: true,
+        openrouter: Boolean(env.OPENROUTER_API_KEY)
+      });
+    }
+
+    if (
+      request.method === "POST" &&
+      (
+        url.pathname === "/api/script" ||
+        url.pathname === "/api/chat"
+      )
+    ) {
+      try {
+        const form = await request.formData();
+        const message = String(
+          form.get("message") || ""
+        ).trim();
+
+        const file = form.get("image");
+        const hasImage =
+          file &&
+          typeof file.arrayBuffer === "function" &&
+          file.size > 0;
+
+        if (!message && !hasImage) {
+          return json(
+            { error: "اكتب طلبك أو أرفق صورة المنتج." },
+            400
+          );
+        }
+
+        const content = [];
+
+        if (url.pathname === "/api/script") {
+          content.push({
+            type: "text",
+            text: `أنشئ إعلاناً تسويقياً احترافياً.
+فئة المنتج: ${form.get("category") || "غير محددة"}
+أسلوب الإعلان: ${form.get("style") || "تلقائي"}
+مدة الإعلان: ${form.get("duration") || "15"} ثانية
+اللهجة: ${form.get("dialect") || "عراقي"}
+طلب المستخدم: ${message || "حلّل صورة المنتج وأنشئ إعلاناً مناسباً."}
+
+المطلوب:
+1. Hook جذاب في البداية.
+2. مشاهد مختصرة تناسب المدة المطلوبة.
+3. الحوار إن كان مناسباً.
+4. دعوة واضحة للشراء (CTA).
+5. كابشن وهاشتاغات مناسبة.
+6. برومبت جاهز لمولد فيديو يحافظ على شكل المنتج وصورته الأصلية.
+
+لا تخترع السعر أو اسم العلامة التجارية أو المكونات إذا لم يذكرها المستخدم ولم تكن ظاهرة بوضوح.`
+          });
+        } else if (message) {
+          content.push({
+            type: "text",
+            text: message
+          });
+        }
+
+        if (hasImage) {
+          if (file.size > 5 * 1024 * 1024) {
+            return json(
+              {
+                error:
+                  "حجم الصورة يجب ألا يتجاوز 5 ميغابايت."
+              },
+              400
+            );
+          }
+
+          content.push({
+            type: "image_url",
+            image_url: {
+              url: await imageDataUri(file)
+            }
+          });
+        }
+
+        const answer = await askAI(env, content);
+        return json({ answer });
+
+      } catch (error) {
+        return json(
+          {
+            error:
+              error.message ||
+              "حدث خطأ أثناء معالجة الطلب."
+          },
+          500
+        );
       }
-    });
-    const t=await rr.text();
-    res.status(rr.status).type("application/json").send(t);
-  }catch(e){res.status(500).json({error:e.message});}
-});
+    }
 
-app.get("*", (req,res)=>{
-  res.sendFile(path.resolve("public/index.html"));
-});
+    if (url.pathname.startsWith("/api/")) {
+      return json(
+        { error: "المسار غير موجود." },
+        404
+      );
+    }
 
-const port=process.env.PORT || 10000;
-app.listen(port,"0.0.0.0",()=>console.log(`AI Ad Agent running on ${port}`));
+    if (env.ASSETS) {
+      return env.ASSETS.fetch(request);
+    }
+
+    return new Response(
+      "لم يتم إعداد ملفات الواجهة.",
+      { status: 500 }
+    );
+  }
+};
