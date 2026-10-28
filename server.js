@@ -1,101 +1,112 @@
 
-const SYSTEM = `أنت AI Ad Maker PRO، مساعد تسويق ذكي لجميع المتاجر والأنشطة التجارية.
-ساعد المستخدم في تسويق أي منتج أو خدمة، وكتابة إعلانات جذابة.
-حلل صور المنتجات بدقة، ولا تخترع معلومات أو أسعاراً أو مكونات غير معروفة.
-اكتب باللهجة أو اللغة التي يطلبها المستخدم.
-أنشئ Hook جذاباً، ومشاهد وحواراً عند الحاجة، ودعوة واضحة للشراء (CTA)، وكابشن وهاشتاغات.
-عند إعداد إعلان فيديو، اقترح مدة 8 أو 15 أو 30 ثانية حسب طلب المستخدم.
-عند كتابة برومبت فيديو، اطلب الحفاظ على شكل المنتج ولونه وعبوته وشعاره والنصوص الظاهرة في صورة المرجع.
-لا تدّعِ إنشاء فيديو فعلياً ما لم يتم استخدام خدمة توليد فيديو بنجاح.`;
+const SYSTEM = `
+أنت مساعد تسويق ذكي متخصص في إنشاء إعلانات احترافية للإنستغرام.
+تحدث باللغة التي يطلبها المستخدم، واستخدم اللهجة العراقية عند طلبها.
+أنشئ Hook جذاباً، ونص الإعلان، وكابشن، وهاشتاغات مناسبة،
+وأفكاراً للمشاهد عند الحاجة.
+لا تخترع أسعاراً أو مواصفات غير مذكورة.
+إذا أرسل المستخدم صورة منتج، فحللها واستخدم تفاصيلها الظاهرة فقط.
+اجعل النتائج عملية وجاهزة للاستخدام.
+`;
 
-function json(data, status = 200, headers = {}) {
+function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
     headers: {
       "Content-Type": "application/json; charset=utf-8",
-      ...headers
+      "Cache-Control": "no-store"
     }
   });
 }
 
-async function imageDataUri(file) {
-  if (!file || !file.size) return null;
+async function readRequest(request) {
+  const type = request.headers.get("content-type") || "";
 
-  const bytes = new Uint8Array(await file.arrayBuffer());
-  let binary = "";
-  const chunkSize = 8192;
-
-  for (let i = 0; i < bytes.length; i += chunkSize) {
-    binary += String.fromCharCode(
-      ...bytes.subarray(i, i + chunkSize)
-    );
-  }
-
-  return `data:${file.type || "image/jpeg"};base64,${btoa(binary)}`;
-}
-
-// اتصال OpenRouter: يبقى مستخدماً لمسارات الفيديو الأصلية
-async function openRouter(env, path, options = {}) {
-  if (!env.OPENROUTER_API_KEY) {
-    throw new Error(
-      "لم تتم إضافة مفتاح OpenRouter إلى إعدادات Cloudflare."
-    );
-  }
-
-  return fetch(`https://openrouter.ai/api/v1${path}`, {
-    ...options,
-    headers: {
-      "Authorization": `Bearer ${env.OPENROUTER_API_KEY}`,
-      ...(options.body ? {
-        "Content-Type": "application/json"
-      } : {}),
-      "X-Title": "AI Ad Maker PRO",
-      ...options.headers
+  if (type.includes("multipart/form-data")) {
+    const form = await request.formData();
+    const data = {};
+    for (const [key, value] of form.entries()) {
+      data[key] = value;
     }
-  });
+    return data;
+  }
+
+  if (type.includes("application/json")) {
+    return await request.json();
+  }
+
+  return {};
 }
 
-// Gemini: كتابة الإعلانات والمحادثة وتحليل صور المنتجات
+function imageToPart(value) {
+  if (!value || typeof value === "string") return null;
+
+  const type = value.type || "";
+  if (!type.startsWith("image/")) {
+    throw new Error("الملف المرفق ليس صورة.");
+  }
+
+  if (value.size > 5 * 1024 * 1024) {
+    throw new Error("حجم الصورة يجب ألا يتجاوز 5 ميغابايت.");
+  }
+
+  return value.arrayBuffer().then(async buffer => ({
+    type: "image",
+    mime_type: type,
+    data: arrayBufferToBase64(buffer)
+  }));
+}
+
+function arrayBufferToBase64(buffer) {
+  const bytes = new Uint8Array(buffer);
+  const chunks = [];
+  const size = 0x8000;
+
+  for (let i = 0; i < bytes.length; i += size) {
+    chunks.push(
+      String.fromCharCode(...bytes.subarray(i, i + size))
+    );
+  }
+
+  return btoa(chunks.join(""));
+}
+
 async function askAI(env, content) {
   if (!env.GEMINI_API_KEY) {
     throw new Error(
-      "لم تتم إضافة GEMINI_API_KEY إلى أسرار Cloudflare."
+      "مفتاح GEMINI_API_KEY غير موجود في Cloudflare."
     );
   }
 
-  const model = env.GEMINI_MODEL || "gemini-2.5-flash";
+  const model = env.GEMINI_MODEL || "gemini-3.8-flash";
+  const input = [];
 
-  const parts = content.map((item) => {
+  for (const item of content) {
     if (item.type === "text") {
-      return { text: item.text };
-    }
-
-    if (item.type === "image_url") {
+      input.push({
+        type: "text",
+        text: item.text
+      });
+    } else if (item.type === "image_url") {
       const url = item.image_url?.url || "";
-
       const match = url.match(
         /^data:(image\/(?:jpeg|png|webp));base64,(.+)$/s
       );
 
       if (!match) {
-        throw new Error(
-          "تعذر قراءة صورة المنتج. استخدم JPG أو PNG أو WEBP."
-        );
+        throw new Error("صيغة الصورة غير مدعومة.");
       }
 
-      return {
-        inline_data: {
-          mime_type: match[1],
-          data: match[2]
-        }
-      };
+      input.push({
+        type: "image",
+        mime_type: match[1],
+        data: match[2]
+      });
     }
-
-    return null;
-  }).filter(Boolean);
+  }
 
   const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
+    "https://generativelanguage.googleapis.com/v1beta/interactions",
     {
       method: "POST",
       headers: {
@@ -103,14 +114,11 @@ async function askAI(env, content) {
         "x-goog-api-key": env.GEMINI_API_KEY
       },
       body: JSON.stringify({
-        system_instruction: {
-          parts: [{ text: SYSTEM }]
-        },
-        contents: [{
-          role: "user",
-          parts
-        }],
-        generationConfig: {
+        model,
+        system_instruction: SYSTEM,
+        input,
+        store: false,
+        generation_config: {
           temperature: 0.7
         }
       })
@@ -120,410 +128,316 @@ async function askAI(env, content) {
   const result = await response.json();
 
   if (!response.ok) {
-    const message =
-      result?.error?.message ||
-      "تعذر الاتصال بـ Gemini.";
-
     throw new Error(
-      `Gemini API (${response.status}): ${message}`
+      `Gemini API (${response.status}): ${
+        result?.error?.message || "تعذر الاتصال بـ Gemini."
+      }`
     );
   }
 
-  const answer = result?.candidates?.[0]?.content?.parts
-    ?.map((part) => part.text || "")
-    .join("")
-    .trim();
+  let answer = "";
+
+  if (Array.isArray(result.outputs)) {
+    answer = result.outputs
+      .filter(item => item.type === "text" || item.text)
+      .map(item => item.text || "")
+      .join("\n");
+  }
+
+  if (!answer && Array.isArray(result.steps)) {
+    answer = result.steps
+      .filter(step => step.type === "model_output")
+      .flatMap(step => step.content || [])
+      .map(part => part.text || "")
+      .join("\n");
+  }
+
+  answer = answer.trim();
 
   if (!answer) {
-    const reason = result?.promptFeedback?.blockReason;
-
     throw new Error(
-      reason
-        ? `تم حظر الطلب: ${reason}`
-        : "لم يرجع Gemini نتيجة. تحقق من النموذج وحصة الاستخدام."
+      "لم يُرجع Gemini نصاً. تحقق من النموذج واستجابة API."
     );
   }
 
   return answer;
 }
 
+async function openRouter(env, path, options = {}) {
+  if (!env.OPENROUTER_API_KEY) {
+    throw new Error(
+      "مفتاح OPENROUTER_API_KEY غير موجود."
+    );
+  }
+
+  const response = await fetch(
+    `https://openrouter.ai/api/v1${path}`,
+    {
+      ...options,
+      headers: {
+        Authorization: `Bearer ${env.OPENROUTER_API_KEY}`,
+        "Content-Type": "application/json",
+        ...(options.headers || {})
+      }
+    }
+  );
+
+  if (!response.ok) {
+    const message = await response.text();
+    throw new Error(
+      `OpenRouter API (${response.status}): ${message.slice(0, 1200)}`
+    );
+  }
+
+  return response;
+}
+
 function validJobId(id) {
   return /^[a-zA-Z0-9_-]{1,200}$/.test(id);
+}
+
+async function makeContent(data, mode) {
+  let prompt;
+
+  if (mode === "script") {
+    prompt = [
+      "أنشئ سيناريو إعلان تسويقي للمنتج التالي.",
+      `اسم المنتج: ${data.productName || data.product || "غير محدد"}`,
+      `الفئة: ${data.category || "غير محددة"}`,
+      `السعر: ${data.price || "لم يُذكر"}`,
+      `الجمهور المستهدف: ${data.audience || "غير محدد"}`,
+      `مدة الإعلان: ${data.duration || "15"} ثانية`,
+      `اللهجة: ${data.dialect || "العراقية"}`,
+      `الأسلوب: ${data.style || "جذاب واحترافي"}`,
+      `تفاصيل إضافية: ${data.details || ""}`,
+      "أخرج Hook، والمشاهد، والحوار، والكابشن والهاشتاغات."
+    ].join("\n");
+  } else {
+    prompt = String(
+      data.message || data.prompt || data.text || ""
+    ).trim();
+  }
+
+  if (!prompt) {
+    throw new Error("اكتب طلبك أولاً.");
+  }
+
+  const content = [{ type: "text", text: prompt }];
+
+  const image = data.image || data.productImage || data.file;
+
+  if (image && typeof image !== "string") {
+    const part = await imageToPart(image);
+    if (part) {
+      content.push({
+        type: "image_url",
+        image_url: {
+          url: `data:${part.mime_type};base64,${part.data}`
+        }
+      });
+    }
+  } else if (typeof image === "string" &&
+             image.startsWith("data:image/")) {
+    content.push({
+      type: "image_url",
+      image_url: { url: image }
+    });
+  }
+
+  return content;
 }
 
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     const path = url.pathname;
+    const method = request.method;
 
-    // فحص اتصال الخادم
-    if (request.method === "GET" && path === "/api/health") {
-      return json({
-        ok: true,
-        gemini: Boolean(env.GEMINI_API_KEY),
-        openrouter: Boolean(env.OPENROUTER_API_KEY),
-        videoApi: Boolean(env.OPENROUTER_API_KEY)
-      });
-    }
-
-    // قائمة نماذج الفيديو المتاحة عبر OpenRouter
-    if (request.method === "GET" && path === "/api/video/models") {
-      try {
-        const response = await openRouter(env, "/videos/models");
-        const result = await response.json();
-
-        if (!response.ok) {
-          return json({
-            error: result?.error?.message ||
-              "تعذر جلب نماذج الفيديو."
-          }, response.status);
-        }
-
-        return json(result);
-      } catch (error) {
-        return json({
-          error: error.message ||
-            "حدث خطأ أثناء جلب النماذج."
-        }, 500);
-      }
-    }
-
-    // إنشاء إعلان نصي أو محادثة مع Gemini
-    if (
-      request.method === "POST" &&
-      (path === "/api/script" || path === "/api/chat")
-    ) {
-      try {
-        const form = await request.formData();
-        const message = String(
-          form.get("message") || ""
-        ).trim();
-
-        const file = form.get("image");
-
-        const hasImage =
-          file &&
-          typeof file.arrayBuffer === "function" &&
-          file.size > 0;
-
-        if (!message && !hasImage) {
-          return json({
-            error: "اكتب طلبك أو أرفق صورة المنتج."
-          }, 400);
-        }
-
-        const content = [];
-
-        if (path === "/api/script") {
-          content.push({
-            type: "text",
-            text: `أنشئ إعلاناً تسويقياً احترافياً.
-فئة المنتج: ${form.get("category") || "غير محددة"}
-أسلوب الإعلان: ${form.get("style") || "تلقائي"}
-مدة الإعلان: ${form.get("duration") || "15"} ثانية
-اللهجة: ${form.get("dialect") || "عراقي"}
-طلب المستخدم: ${message || "حلّل صورة المنتج وأنشئ إعلاناً مناسباً."}
-
-المطلوب:
-1. Hook جذاب في البداية.
-2. مشاهد مختصرة تناسب المدة المطلوبة.
-3. الحوار إن كان مناسباً.
-4. دعوة واضحة للشراء (CTA).
-5. كابشن وهاشتاغات مناسبة.
-6. برومبت جاهز لمولد فيديو يحافظ على شكل المنتج وصورته الأصلية.
-
-لا تخترع السعر أو اسم العلامة التجارية أو المكونات إذا لم يذكرها المستخدم ولم تكن ظاهرة بوضوح.`
-          });
-        } else {
-          content.push({
-            type: "text",
-            text: message
-          });
-        }
-
-        if (hasImage) {
-          if (file.size > 5 * 1024 * 1024) {
-            return json({
-              error: "حجم الصورة يجب ألا يتجاوز 5 ميغابايت."
-            }, 400);
+    try {
+      if (method === "OPTIONS") {
+        return new Response(null, {
+          status: 204,
+          headers: {
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type"
           }
+        });
+      }
 
-          content.push({
-            type: "image_url",
-            image_url: {
-              url: await imageDataUri(file)
-            }
-          });
-        }
+      if (method === "GET" && path === "/api/health") {
+        return json({
+          ok: true,
+          gemini: Boolean(env.GEMINI_API_KEY),
+          openrouter: Boolean(env.OPENROUTER_API_KEY),
+          videoApi: Boolean(env.OPENROUTER_API_KEY)
+        });
+      }
 
+      if (method === "GET" && path === "/api/video/models") {
+        const response = await openRouter(
+          env,
+          "/videos/models",
+          { method: "GET" }
+        );
+        return new Response(response.body, {
+          status: response.status,
+          headers: {
+            "Content-Type":
+              response.headers.get("Content-Type") ||
+              "application/json"
+          }
+        });
+      }
+
+      if (
+        method === "POST" &&
+        (path === "/api/script" || path === "/api/chat")
+      ) {
+        const data = await readRequest(request);
+        const mode = path === "/api/script" ? "script" : "chat";
+        const content = await makeContent(data, mode);
         const answer = await askAI(env, content);
 
-        return json({ answer });
-      } catch (error) {
         return json({
-          error: error.message ||
-            "حدث خطأ أثناء معالجة الطلب."
-        }, 500);
+          ok: true,
+          answer,
+          text: answer
+        });
       }
-    }
 
-    // بدء مهمة توليد فيديو عبر OpenRouter
-    if (request.method === "POST" && path === "/api/video") {
-      try {
-        const form = await request.formData();
+      if (method === "POST" && path === "/api/video") {
+        if (!env.OPENROUTER_API_KEY) {
+          return json({
+            error: "إنشاء الفيديو يحتاج إلى إعداد OpenRouter."
+          }, 503);
+        }
+
+        const data = await readRequest(request);
         const prompt = String(
-          form.get("prompt") || ""
+          data.prompt || data.message || data.script || ""
         ).trim();
 
         if (!prompt) {
-          return json({
-            error: "اكتب وصف الفيديو أولاً."
-          }, 400);
+          return json({ error: "أدخل وصف الفيديو أولاً." }, 400);
         }
 
         const model = String(
-          form.get("model") ||
-          env.OPENROUTER_VIDEO_MODEL ||
-          ""
+          data.model || env.OPENROUTER_VIDEO_MODEL || ""
         ).trim();
 
         if (!model) {
           return json({
-            error: "اختر نموذج فيديو من قائمة النماذج أولاً."
+            error: "حدد نموذج فيديو مدعوماً من OpenRouter."
           }, 400);
         }
 
-        const duration = Number(
-          form.get("duration") || 8
-        );
-
-        const aspectRatio = String(
-          form.get("aspect_ratio") || "9:16"
-        );
-
-        const resolution = String(
-          form.get("resolution") || "720p"
-        );
-
-        const generateAudio =
-          String(form.get("generate_audio") || "false") === "true";
-
-        if (
-          !Number.isInteger(duration) ||
-          duration < 1 ||
-          duration > 60
-        ) {
-          return json({
-            error: "مدة الفيديو يجب أن تكون بين ثانية واحدة و60 ثانية."
-          }, 400);
-        }
-
-        const payload = {
+        const body = {
           model,
           prompt,
-          duration,
-          aspect_ratio: aspectRatio,
-          resolution,
-          generate_audio: generateAudio
+          duration: Math.min(
+            60,
+            Math.max(1, Number(data.duration) || 8)
+          ),
+          aspect_ratio: data.aspect_ratio || "9:16",
+          resolution: data.resolution || "720p"
         };
 
-        // صورة المنتج اختيارية وتستخدم كمرجع بصري
-        const file = form.get("image");
-
-        const hasImage =
-          file &&
-          typeof file.arrayBuffer === "function" &&
-          file.size > 0;
-
-        if (hasImage) {
-          if (file.size > 5 * 1024 * 1024) {
-            return json({
-              error: "حجم صورة المرجع يجب ألا يتجاوز 5 ميغابايت."
-            }, 400);
-          }
-
-          if (
-            file.type &&
-            ![
-              "image/jpeg",
-              "image/png",
-              "image/webp"
-            ].includes(file.type)
-          ) {
-            return json({
-              error: "استخدم صورة بصيغة JPG أو PNG أو WEBP."
-            }, 400);
-          }
-
-          payload.input_references = [{
-            type: "image_url",
-            image_url: {
-              url: await imageDataUri(file)
-            }
-          }];
+        if (data.audio !== undefined) {
+          body.audio = String(data.audio) === "true";
         }
 
-        const response = await openRouter(env, "/videos", {
-          method: "POST",
-          body: JSON.stringify(payload)
-        });
-
-        const result = await response.json();
-
-        if (!response.ok) {
-          return json({
-            error: result?.error?.message ||
-              "تعذر بدء توليد الفيديو.",
-            details: result
-          }, response.status);
-        }
-
-        return json({
-          ok: true,
-          id: result.id,
-          status: result.status,
-          polling_url: result.polling_url,
-          model
-        }, 202);
-      } catch (error) {
-        return json({
-          error: error.message ||
-            "حدث خطأ أثناء بدء توليد الفيديو."
-        }, 500);
-      }
-    }
-
-    // الاستعلام عن حالة مهمة الفيديو
-    const contentMatch = path.match(
-      /^\/api\/video\/([^/]+)\/content$/
-    );
-
-    const statusMatch = path.match(
-      /^\/api\/video\/([^/]+)$/
-    );
-
-    // يجب فحص مسار content قبل مسار الحالة
-    if (
-      request.method === "GET" &&
-      statusMatch &&
-      !contentMatch
-    ) {
-      const id = statusMatch[1];
-
-      if (!validJobId(id)) {
-        return json({
-          error: "معرّف مهمة غير صالح."
-        }, 400);
-      }
-
-      try {
         const response = await openRouter(
           env,
-          `/videos/${encodeURIComponent(id)}`
-        );
-
-        const result = await response.json();
-
-        if (!response.ok) {
-          return json({
-            error: result?.error?.message ||
-              "تعذر الاستعلام عن حالة الفيديو."
-          }, response.status);
-        }
-
-        return json({
-          id: result.id,
-          status: result.status,
-          error: result.error || null,
-          usage: result.usage || null,
-          videoUrl: result.status === "completed"
-            ? `/api/video/${encodeURIComponent(id)}/content`
-            : null
-        });
-      } catch (error) {
-        return json({
-          error: error.message ||
-            "تعذر الاستعلام عن الفيديو."
-        }, 500);
-      }
-    }
-
-    // تمرير ملف الفيديو عبر الخادم
-    if (
-      request.method === "GET" &&
-      contentMatch
-    ) {
-      const id = contentMatch[1];
-
-      if (!validJobId(id)) {
-        return json({
-          error: "معرّف مهمة غير صالح."
-        }, 400);
-      }
-
-      const index = url.searchParams.get("index") || "0";
-
-      if (!/^\d+$/.test(index)) {
-        return json({
-          error: "رقم ملف فيديو غير صالح."
-        }, 400);
-      }
-
-      try {
-        const response = await openRouter(
-          env,
-          `/videos/${encodeURIComponent(id)}/content?index=${index}`
-        );
-
-        if (!response.ok) {
-          const details = await response.text();
-
-          return json({
-            error: "لم نتمكن من جلب ملف الفيديو.",
-            details: details.slice(0, 1000)
-          }, response.status);
-        }
-
-        const headers = new Headers();
-
-        headers.set(
-          "Content-Type",
-          response.headers.get("Content-Type") ||
-            "video/mp4"
-        );
-
-        headers.set("Cache-Control", "no-store");
-
-        headers.set(
-          "Content-Disposition",
-          'inline; filename="ai-ad-video.mp4"'
+          "/videos",
+          {
+            method: "POST",
+            body: JSON.stringify(body)
+          }
         );
 
         return new Response(response.body, {
-          status: 200,
-          headers
+          status: response.status,
+          headers: {
+            "Content-Type":
+              response.headers.get("Content-Type") ||
+              "application/json"
+          }
         });
-      } catch (error) {
-        return json({
-          error: error.message ||
-            "حدث خطأ أثناء تحميل الفيديو."
-        }, 500);
       }
-    }
 
-    if (path.startsWith("/api/")) {
+      const contentMatch = path.match(
+        /^\/api\/video\/([a-zA-Z0-9_-]+)\/content$/
+      );
+
+      if (method === "GET" && contentMatch) {
+        const id = contentMatch[1];
+        const index = url.searchParams.get("index") || "0";
+
+        if (!validJobId(id) || !/^\d+$/.test(index)) {
+          return json({ error: "معرّف الفيديو غير صالح." }, 400);
+        }
+
+        const response = await openRouter(
+          env,
+          `/videos/${encodeURIComponent(id)}/content?index=${index}`,
+          { method: "GET" }
+        );
+
+        return new Response(response.body, {
+          status: response.status,
+          headers: {
+            "Content-Type":
+              response.headers.get("Content-Type") ||
+              "video/mp4",
+            "Cache-Control": "no-store"
+          }
+        });
+      }
+
+      const statusMatch = path.match(
+        /^\/api\/video\/([a-zA-Z0-9_-]+)$/
+      );
+
+      if (method === "GET" && statusMatch) {
+        const id = statusMatch[1];
+
+        if (!validJobId(id)) {
+          return json({ error: "معرّف الفيديو غير صالح." }, 400);
+        }
+
+        const response = await openRouter(
+          env,
+          `/videos/${encodeURIComponent(id)}`,
+          { method: "GET" }
+        );
+
+        return new Response(response.body, {
+          status: response.status,
+          headers: {
+            "Content-Type":
+              response.headers.get("Content-Type") ||
+              "application/json"
+          }
+        });
+      }
+
+      if (path.startsWith("/api/")) {
+        return json({ error: "المسار المطلوب غير موجود." }, 404);
+      }
+
+      if (env.ASSETS) {
+        return env.ASSETS.fetch(request);
+      }
+
+      return new Response("AI Ad Maker PRO API is running.", {
+        headers: { "Content-Type": "text/plain; charset=utf-8" }
+      });
+    } catch (error) {
       return json({
-        error: "المسار غير موجود."
-      }, 404);
+        ok: false,
+        error: error?.message || "حدث خطأ غير متوقع."
+      }, 500);
     }
-
-    if (env.ASSETS) {
-      return env.ASSETS.fetch(request);
-    }
-
-    return new Response(
-      "لم يتم إعداد ملفات الواجهة.",
-      { status: 500 }
-    );
   }
 };
