@@ -78,10 +78,18 @@ async function imageToPart(value) {
   };
 }
 
+/*
+ * النموذج الأساسي: Gemini.
+ * النموذج الاحتياطي: OpenRouter Free.
+ */
 async function askAI(env, content) {
   if (!env.GEMINI_API_KEY) {
+    if (env.OPENROUTER_API_KEY) {
+      return await askOpenRouter(env, content);
+    }
+
     throw new Error(
-      "مفتاح GEMINI_API_KEY غير موجود في Cloudflare."
+      "لا يوجد مفتاح Gemini أو OpenRouter في إعدادات Cloudflare."
     );
   }
 
@@ -95,9 +103,8 @@ async function askAI(env, content) {
         text: item.text
       });
     } else if (item.type === "image_url") {
-      const url = item.image_url?.url || "";
-
-      const match = url.match(
+      const imageUrl = item.image_url?.url || "";
+      const match = imageUrl.match(
         /^data:(image\/(?:jpeg|png|webp));base64,(.+)$/s
       );
 
@@ -113,44 +120,73 @@ async function askAI(env, content) {
     }
   }
 
-  const response = await fetch(
-    "https://generativelanguage.googleapis.com/v1beta/interactions",
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-goog-api-key": env.GEMINI_API_KEY
-      },
-      body: JSON.stringify({
-        model,
-        system_instruction: SYSTEM,
-        input,
-        store: false,
-        generation_config: {
-          temperature: 0.7
-        }
-      })
-    }
-  );
+  let response;
 
-  // التعديل: قراءة تفاصيل رد Gemini وإظهارها عند حدوث خطأ.
+  try {
+    response = await fetch(
+      "https://generativelanguage.googleapis.com/v1beta/interactions",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-goog-api-key": env.GEMINI_API_KEY
+        },
+        body: JSON.stringify({
+          model,
+          system_instruction: SYSTEM,
+          input,
+          store: false,
+          generation_config: {
+            temperature: 0.7
+          }
+        })
+      }
+    );
+  } catch (error) {
+    if (env.OPENROUTER_API_KEY) {
+      return await askOpenRouter(env, content);
+    }
+
+    throw new Error(
+      "تعذر الاتصال بـ Gemini: " +
+      (error?.message || "خطأ اتصال")
+    );
+  }
+
   const responseText = await response.text();
   let result;
 
   try {
     result = JSON.parse(responseText);
   } catch {
-    result = { raw_response: responseText.slice(0, 2000) };
+    result = {
+      raw_response: responseText.slice(0, 1500)
+    };
   }
 
   if (!response.ok) {
     const details = result?.error || result;
+    const geminiError =
+      `Gemini API (${response.status}): ` +
+      JSON.stringify(details);
 
-    throw new Error(
-      `Gemini API (${response.status}): ${
-        JSON.stringify(details)
-      }`
-    );
+    // الانتقال إلى النموذج الاحتياطي عند الضغط أو الأعطال المؤقتة.
+    const temporaryError = [
+      408, 429, 500, 502, 503, 504
+    ].includes(response.status);
+
+    if (temporaryError && env.OPENROUTER_API_KEY) {
+      try {
+        return await askOpenRouter(env, content);
+      } catch (fallbackError) {
+        throw new Error(
+          `${geminiError} | فشل النموذج الاحتياطي: ` +
+          (fallbackError?.message || "خطأ غير معروف")
+        );
+      }
+    }
+
+    throw new Error(geminiError);
   }
 
   let answer = "";
@@ -175,7 +211,95 @@ async function askAI(env, content) {
   if (!answer) {
     throw new Error(
       "لم يُرجع Gemini نصاً. تفاصيل الاستجابة: " +
-      JSON.stringify(result).slice(0, 1500)
+      JSON.stringify(result).slice(0, 1200)
+    );
+  }
+
+  return answer;
+}
+
+/*
+ * النموذج الاحتياطي عبر OpenRouter.
+ * يمكن تغيير OPENROUTER_TEXT_MODEL من إعدادات Cloudflare.
+ */
+async function askOpenRouter(env, content) {
+  if (!env.OPENROUTER_API_KEY) {
+    throw new Error(
+      "مفتاح OPENROUTER_API_KEY غير موجود."
+    );
+  }
+
+  const userContent = content.map(item => {
+    if (item.type === "text") {
+      return {
+        type: "text",
+        text: item.text
+      };
+    }
+
+    if (item.type === "image_url") {
+      return {
+        type: "image_url",
+        image_url: {
+          url: item.image_url.url
+        }
+      };
+    }
+
+    return null;
+  }).filter(Boolean);
+
+  const model = env.OPENROUTER_TEXT_MODEL || "openrouter/free";
+
+  const response = await openRouter(
+    env,
+    "/chat/completions",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        model,
+        messages: [
+          {
+            role: "system",
+            content: SYSTEM
+          },
+          {
+            role: "user",
+            content: userContent
+          }
+        ],
+        temperature: 0.7
+      })
+    }
+  );
+
+  let result;
+
+  try {
+    result = await response.json();
+  } catch {
+    throw new Error(
+      "تعذر قراءة استجابة OpenRouter."
+    );
+  }
+
+  const message = result?.choices?.[0]?.message?.content;
+  let answer = "";
+
+  if (typeof message === "string") {
+    answer = message.trim();
+  } else if (Array.isArray(message)) {
+    answer = message
+      .filter(part => part.type === "text" && part.text)
+      .map(part => part.text)
+      .join("\n")
+      .trim();
+  }
+
+  if (!answer) {
+    throw new Error(
+      "لم يُرجع OpenRouter نصاً صالحاً: " +
+      JSON.stringify(result).slice(0, 1000)
     );
   }
 
