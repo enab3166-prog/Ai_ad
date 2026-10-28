@@ -22,7 +22,7 @@
     }
     header h1 { margin: 0; font-size: 28px; }
     header p { margin: 8px 0 0; color: #e9d5ff; }
-    main { max-width: 720px; margin: auto; padding: 18px; }
+    main { max-width: 760px; margin: auto; padding: 18px; }
     .card {
       background: #151c30;
       border: 1px solid #29334c;
@@ -54,18 +54,37 @@
       border-radius: 10px;
       background: #8b5cf6;
       color: white;
-      font-size: 17px;
+      font-size: 16px;
       font-weight: bold;
       cursor: pointer;
     }
-    button:disabled { opacity: .6; }
-    #result {
+    button:disabled { opacity: .6; cursor: wait; }
+    .secondary { background: #374151; }
+    .muted { color: #aab4ca; font-size: 14px; }
+    .status { color: #c4b5fd; overflow-wrap: anywhere; }
+    .result {
       white-space: pre-wrap;
       overflow-wrap: anywhere;
-      min-height: 60px;
+      min-height: 50px;
     }
-    .muted { color: #aab4ca; font-size: 14px; }
-    .status { color: #c4b5fd; }
+    .notice {
+      padding: 12px;
+      border-radius: 10px;
+      background: #0b1020;
+      border: 1px solid #374151;
+      margin-top: 12px;
+      font-size: 14px;
+    }
+    video {
+      display: block;
+      width: 100%;
+      max-height: 520px;
+      margin-top: 16px;
+      background: #000;
+      border-radius: 12px;
+    }
+    .hidden { display: none; }
+    a { color: #c4b5fd; }
   </style>
 </head>
 <body>
@@ -76,17 +95,16 @@
 
   <main>
     <section class="card">
-      <h2>🎯 أنشئ إعلانك</h2>
-      <p class="muted">أرفق صورة المنتج واكتب ما تريد إنشاءه.</p>
+      <h2>🎯 إنشاء إعلان تسويقي</h2>
+      <p class="muted">اكتب طلبك وأرفق صورة المنتج لتحليلها عند دعم النموذج لذلك.</p>
 
       <form id="adForm">
         <label for="image">صورة المنتج</label>
-        <input id="image" name="image" type="file"
-               accept="image/*">
+        <input id="image" name="image" type="file" accept="image/jpeg,image/png,image/webp">
 
         <label for="message">ماذا تريد من الذكاء الاصطناعي؟</label>
         <textarea id="message" name="message"
-          placeholder="مثال: اكتب إعلانًا باللهجة العراقية لعطر نسائي، مع بداية جذابة ودعوة للشراء."></textarea>
+          placeholder="مثال: اكتب إعلانًا باللهجة العراقية لعطر نسائي مع بداية جذابة ودعوة للشراء."></textarea>
 
         <label for="category">فئة المنتج</label>
         <select id="category" name="category">
@@ -94,6 +112,8 @@
           <option>مكياجات</option>
           <option>العناية بالبشرة</option>
           <option>العناية بالشعر</option>
+          <option>ملابس وأزياء</option>
+          <option>إلكترونيات</option>
           <option>منتج آخر</option>
         </select>
 
@@ -107,7 +127,7 @@
           <option>ترند إنستغرام</option>
         </select>
 
-        <label for="duration">مدة الإعلان</label>
+        <label for="duration">مدة الإعلان النصي المقترحة</label>
         <select id="duration" name="duration">
           <option value="8">8 ثوانٍ</option>
           <option value="15" selected>15 ثانية</option>
@@ -122,55 +142,171 @@
           <option>مصري</option>
         </select>
 
-        <button id="submitBtn" type="submit">✨ إنشاء الإعلان بالذكاء الاصطناعي</button>
+        <button id="submitBtn" type="submit">✨ إنشاء الإعلان النصي</button>
       </form>
     </section>
 
     <section class="card">
       <h2>🪄 نتيجة الإعلان</h2>
-      <p id="status" class="status">جاهز لاستقبال طلبك.</p>
-      <div id="result">ستظهر نتيجة الإعلان هنا.</div>
-      <button id="copyBtn" type="button">نسخ النتيجة</button>
+      <p id="adStatus" class="status">جاهز لاستقبال طلبك.</p>
+      <div id="adResult" class="result">ستظهر نتيجة الإعلان هنا.</div>
+      <button id="copyBtn" type="button" class="secondary">نسخ النتيجة</button>
     </section>
 
     <section class="card">
-      <h3>ماذا يقدم التطبيق؟</h3>
-      <p>• كتابة نصوص إعلانية باللهجة العراقية.</p>
-      <p>• تحليل صورة المنتج عند دعم النموذج لذلك.</p>
-      <p>• اقتراح مشاهد وكابشن وهاشتاغات.</p>
-      <p>• إعداد وصف جاهز لمولدات الفيديو.</p>
-      <p class="muted">توليد الفيديو الفعلي يحتاج إلى خدمة فيديو ومفتاح API صالح.</p>
+      <h2>🎬 إنشاء فيديو فعلي</h2>
+      <p class="muted">
+        أنشئ فيديو من وصف نصي أو استخدم صورة المنتج مرجعًا بصريًا.
+        يتطلب التوليد رصيدًا أو صلاحية استخدام لدى مزود النموذج.
+      </p>
+
+      <form id="videoForm">
+        <label for="videoMode">نوع الفيديو</label>
+        <select id="videoMode">
+          <option value="product">عرض المنتج وحده</option>
+          <option value="scene">مشاهد مع شخصيات وحوار</option>
+        </select>
+
+        <label for="videoPrompt">وصف الفيديو</label>
+        <textarea id="videoPrompt" required
+          placeholder="مثال: إعلان سينمائي عمودي لعطر، إضاءة فاخرة وحركة كاميرا ناعمة، لقطات واضحة للعبوة، دون تغيير شكل المنتج أو شعاره."></textarea>
+
+        <label for="videoImage">صورة المنتج المرجعية (اختيارية)</label>
+        <input id="videoImage" type="file" accept="image/jpeg,image/png,image/webp">
+        <p class="muted">استخدم صورة واضحة. بعض النماذج لا تدعم كل أنواع الصور أو كل الإعدادات.</p>
+
+        <label for="videoModel">نموذج توليد الفيديو</label>
+        <select id="videoModel">
+          <option value="x-ai/grok-imagine-video-1.5-lite">
+            Grok Imagine Video 1.5 Lite — اقتصادي
+          </option>
+        </select>
+        <p id="modelStatus" class="muted">جارٍ تحميل قائمة النماذج...</p>
+
+        <label for="videoDuration">مدة الفيديو</label>
+        <select id="videoDuration">
+          <option value="8" selected>8 ثوانٍ</option>
+        </select>
+
+        <label for="videoResolution">الدقة</label>
+        <select id="videoResolution">
+          <option value="480p" selected>480p — أقل تكلفة</option>
+          <option value="720p">720p</option>
+          <option value="1080p">1080p</option>
+        </select>
+
+        <label for="videoRatio">مقاس الفيديو</label>
+        <select id="videoRatio">
+          <option value="9:16" selected>9:16 — ريلز إنستغرام</option>
+          <option value="16:9">16:9 — أفقي</option>
+          <option value="1:1">1:1 — مربع</option>
+          <option value="4:3">4:3</option>
+          <option value="3:4">3:4</option>
+          <option value="3:2">3:2</option>
+          <option value="2:3">2:3</option>
+        </select>
+
+        <div class="notice" id="costEstimate">
+          التكلفة النهائية تعتمد على النموذج والإعدادات. تحقق من السعر قبل التوليد.
+        </div>
+
+        <button id="videoBtn" type="submit">🎬 بدء توليد الفيديو</button>
+      </form>
+
+      <p id="videoStatus" class="status">لم يبدأ توليد الفيديو بعد.</p>
+      <div id="videoResult" class="result"></div>
+      <video id="videoPlayer" controls playsinline class="hidden"></video>
+      <a id="videoOpen" class="hidden" target="_blank" rel="noopener">فتح ملف الفيديو</a>
+      <button id="resetVideoBtn" class="secondary" type="button">مسح نتيجة الفيديو</button>
+    </section>
+
+    <section class="card">
+      <h3>ℹ️ حول التطبيق</h3>
+      <p>• كتابة نصوص إعلانية وكابشن وهاشتاغات.</p>
+      <p>• إنشاء مهمة فيديو عبر واجهة مزود التوليد عند نجاح الاتصال.</p>
+      <p>• حالة المهمة والنتيجة تعتمد على استجابة خدمة الفيديو.</p>
+      <p class="muted">
+        الحفاظ على شكل المنتج والشخصيات ليس مضمونًا تمامًا؛ اذكر متطلبات الاستمرارية في وصف الفيديو.
+      </p>
     </section>
   </main>
 
   <script>
-    const form = document.getElementById("adForm");
-    const statusEl = document.getElementById("status");
-    const resultEl = document.getElementById("result");
-    const submitBtn = document.getElementById("submitBtn");
+    const $ = (id) => document.getElementById(id);
 
+    const form = $("adForm");
+    const submitBtn = $("submitBtn");
+    const adStatus = $("adStatus");
+    const adResult = $("adResult");
+
+    const videoForm = $("videoForm");
+    const videoBtn = $("videoBtn");
+    const videoStatus = $("videoStatus");
+    const videoResult = $("videoResult");
+    const videoPlayer = $("videoPlayer");
+    const videoOpen = $("videoOpen");
+    const modelSelect = $("videoModel");
+    const durationSelect = $("videoDuration");
+    const resolutionSelect = $("videoResolution");
+    const ratioSelect = $("videoRatio");
+    const modelStatus = $("modelStatus");
+    const costEstimate = $("costEstimate");
+
+    let models = [];
+    let activeVideoUrl = "";
+
+    function addOption(select, value, label) {
+      const option = document.createElement("option");
+      option.value = String(value);
+      option.textContent = label || String(value);
+      select.appendChild(option);
+    }
+
+    async function readJson(response) {
+      const text = await response.text();
+      let payload;
+
+      try {
+        payload = JSON.parse(text);
+      } catch {
+        throw new Error("استجابة الخادم ليست JSON صالحًا. تحقق من النشر.");
+      }
+
+      if (!response.ok) {
+        throw new Error(payload.error || "فشل الطلب.");
+      }
+
+      return payload;
+    }
+
+    // الإعلانات النصية
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
 
-      const message = document.getElementById("message").value.trim();
-      const image = document.getElementById("image").files[0];
+      const message = $("message").value.trim();
+      const image = $("image").files[0];
 
       if (!message && !image) {
-        statusEl.textContent = "اكتب طلبك أو أرفق صورة المنتج أولاً.";
+        adStatus.textContent = "اكتب طلبك أو أرفق صورة المنتج أولاً.";
+        return;
+      }
+
+      if (image && image.size > 5 * 1024 * 1024) {
+        adStatus.textContent = "حجم الصورة يجب ألا يتجاوز 5 ميغابايت.";
         return;
       }
 
       const data = new FormData();
       data.append("message", message);
-      data.append("category", document.getElementById("category").value);
-      data.append("style", document.getElementById("style").value);
-      data.append("duration", document.getElementById("duration").value);
-      data.append("dialect", document.getElementById("dialect").value);
+      data.append("category", $("category").value);
+      data.append("style", $("style").value);
+      data.append("duration", $("duration").value);
+      data.append("dialect", $("dialect").value);
       if (image) data.append("image", image);
 
       submitBtn.disabled = true;
-      statusEl.textContent = "جارٍ إنشاء الإعلان...";
-      resultEl.textContent = "";
+      adStatus.textContent = "جارٍ إنشاء الإعلان النصي...";
+      adResult.textContent = "";
 
       try {
         const response = await fetch("/api/script", {
@@ -178,32 +314,342 @@
           body: data
         });
 
-        const payload = await response.json();
-
-        if (!response.ok) {
-          throw new Error(payload.error || "تعذر إنشاء الإعلان.");
-        }
-
-        resultEl.textContent = payload.answer || "لم تصل نتيجة من الخادم.";
-        statusEl.textContent = "تم استلام النتيجة.";
+        const payload = await readJson(response);
+        adResult.textContent = payload.answer || "لم تصل نتيجة من الخادم.";
+        adStatus.textContent = "استلمنا نتيجة الإعلان.";
       } catch (error) {
-        statusEl.textContent = "حدث خطأ";
-        resultEl.textContent =
-          error.message + "\nتأكد من إعداد الخادم ومفتاح OpenRouter.";
+        adStatus.textContent = "تعذر إنشاء الإعلان.";
+        adResult.textContent = error.message;
       } finally {
         submitBtn.disabled = false;
       }
     });
 
-    document.getElementById("copyBtn").addEventListener("click", async () => {
-      const text = resultEl.textContent;
+    $("copyBtn").addEventListener("click", async () => {
       try {
-        await navigator.clipboard.writeText(text);
-        statusEl.textContent = "تم نسخ النتيجة.";
+        await navigator.clipboard.writeText(adResult.textContent);
+        adStatus.textContent = "تم نسخ النتيجة.";
       } catch {
-        statusEl.textContent = "تعذر النسخ تلقائيًا؛ حدّد النص وانسخه يدويًا.";
+        adStatus.textContent = "تعذر النسخ تلقائيًا؛ حدّد النص وانسخه يدويًا.";
       }
     });
+
+    function getSelectedModel() {
+      return models.find((model) => model.id === modelSelect.value);
+    }
+
+    function refreshModelOptions() {
+      const model = getSelectedModel();
+
+      if (!model) {
+        modelStatus.textContent = "اختر نموذجًا صالحًا من القائمة.";
+        return;
+      }
+
+      const durations = model.supported_durations || [];
+      const resolutions = model.supported_resolutions || [];
+      const ratios = model.supported_aspect_ratios || [];
+
+      const oldDuration = durationSelect.value;
+      durationSelect.replaceChildren();
+
+      const allowedDurations = durations.length ? durations : [8];
+      for (const seconds of allowedDurations) {
+        addOption(durationSelect, seconds, `${seconds} ثانية`);
+      }
+
+      durationSelect.value = allowedDurations.includes(Number(oldDuration))
+        ? oldDuration
+        : String(allowedDurations.includes(8) ? 8 : allowedDurations[0]);
+
+      const oldResolution = resolutionSelect.value;
+      resolutionSelect.replaceChildren();
+
+      const allowedResolutions = resolutions.length
+        ? resolutions
+        : ["480p"];
+
+      for (const resolution of allowedResolutions) {
+        addOption(resolutionSelect, resolution);
+      }
+
+      resolutionSelect.value = allowedResolutions.includes(oldResolution)
+        ? oldResolution
+        : allowedResolutions[0];
+
+      const oldRatio = ratioSelect.value;
+      ratioSelect.replaceChildren();
+
+      const allowedRatios = ratios.length ? ratios : ["9:16"];
+      for (const ratio of allowedRatios) addOption(ratioSelect, ratio);
+
+      ratioSelect.value = allowedRatios.includes(oldRatio)
+        ? oldRatio
+        : (allowedRatios.includes("9:16") ? "9:16" : allowedRatios[0]);
+
+      modelStatus.textContent =
+        `المدد المدعومة: ${allowedDurations.join("، ")} ثانية. ` +
+        `الدقات: ${allowedResolutions.join("، ")}.`;
+
+      updateCostEstimate();
+    }
+
+    function updateCostEstimate() {
+      const model = getSelectedModel();
+      if (!model) {
+        costEstimate.textContent = "تعذر تحديد سعر النموذج.";
+        return;
+      }
+
+      const seconds = Number(durationSelect.value);
+      const resolution = resolutionSelect.value;
+
+      if (model.id === "x-ai/grok-imagine-video-1.5-lite") {
+        const key = {
+          "480p": "cents_per_video_output_second_480p",
+          "720p": "cents_per_video_output_second_720p",
+          "1080p": "cents_per_video_output_second_1080p"
+        }[resolution];
+
+        const cents = Number(model.pricing_skus?.[key]);
+        const imageCents = Number(
+          model.pricing_skus?.cents_per_image_input || 0
+        );
+        const hasImage = $("videoImage").files.length > 0;
+
+        if (Number.isFinite(cents)) {
+          const total = (seconds * cents + (hasImage ? imageCents : 0)) / 100;
+          costEstimate.textContent =
+            `التكلفة التقديرية لهذا الإعداد: $${total.toFixed(2)} ` +
+            `${hasImage ? "(مع احتساب صورة مرجعية وفق بيانات التسعير)." : "(قبل أي رسوم إضافية محتملة)."}`;
+          return;
+        }
+      }
+
+      costEstimate.textContent =
+        "لم نحسب السعر لهذا النموذج تلقائيًا. راجع تفاصيل تسعير المزود قبل بدء التوليد.";
+    }
+
+    async function loadModels() {
+      modelStatus.textContent = "جارٍ جلب نماذج الفيديو...";
+      try {
+        const response = await fetch("/api/video/models");
+        const payload = await readJson(response);
+        models = Array.isArray(payload.data) ? payload.data : [];
+
+        if (!models.length) {
+          throw new Error("لم يرجع مزود الخدمة قائمة نماذج.");
+        }
+
+        const preferred = "x-ai/grok-imagine-video-1.5-lite";
+        const oldValue = modelSelect.value;
+
+        modelSelect.replaceChildren();
+
+        // نعرض النماذج التي تحتوي على إعدادات توليد فيديو معروفة.
+        const videoModels = models.filter((model) =>
+          Array.isArray(model.supported_durations) &&
+          Array.isArray(model.supported_resolutions) &&
+          Array.isArray(model.supported_aspect_ratios)
+        );
+
+        for (const model of videoModels) {
+          const option = document.createElement("option");
+          option.value = model.id;
+          option.textContent = model.name || model.id;
+          modelSelect.appendChild(option);
+        }
+
+        if (!videoModels.length) {
+          throw new Error("لا توجد نماذج مناسبة في القائمة المستلمة.");
+        }
+
+        const ids = videoModels.map((model) => model.id);
+        modelSelect.value = ids.includes(oldValue)
+          ? oldValue
+          : (ids.includes(preferred) ? preferred : ids[0]);
+
+        refreshModelOptions();
+        modelStatus.textContent =
+          `تم تحميل ${videoModels.length} نموذجًا من واجهة المزود.`;
+      } catch (error) {
+        modelStatus.textContent = "تعذر تحميل قائمة النماذج: " + error.message;
+        costEstimate.textContent =
+          "يمكن أن تكون المشكلة في النشر أو الاتصال بواجهة النماذج.";
+      }
+    }
+
+    modelSelect.addEventListener("change", refreshModelOptions);
+    durationSelect.addEventListener("change", updateCostEstimate);
+    resolutionSelect.addEventListener("change", updateCostEstimate);
+    $("videoImage").addEventListener("change", updateCostEstimate);
+
+    function buildVideoPrompt() {
+      const mode = $("videoMode").value;
+      const userPrompt = $("videoPrompt").value.trim();
+
+      const continuity = `
+إرشادات مهمة:
+- اجعل المنتج مطابقًا للصورة المرجعية قدر الإمكان.
+- لا تغيّر لون العبوة أو شكلها أو الشعار أو النصوص الظاهرة.
+- لا تضف مكونات أو ميزات غير مذكورة.
+- حافظ على استمرارية الشخصيات والملابس والمظهر عبر اللقطات.
+- اجعل الحركة واقعية ومناسبة لإعلان تجاري.
+- تجنب النصوص العشوائية داخل الصورة.
+- فيديو عمودي مناسب لريلز إنستغرام عند اختيار 9:16.
+`;
+
+      const modePrompt = mode === "product"
+        ? "نوع الإعلان: عرض المنتج وحده، مع التركيز على العبوة والتفاصيل والإضاءة والحركة السينمائية. لا تضف أشخاصًا."
+        : "نوع الإعلان: مشاهد تمثيلية تجارية. اجعل الشخصيات ثابتة المظهر والملابس عبر اللقطات. إذا احتوى الوصف على حوار، فحدد المتحدث لكل جملة بوضوح.";
+
+      return `${userPrompt}\n\n${modePrompt}\n${continuity}`;
+    }
+
+    function setVideoResult(message) {
+      videoResult.textContent = message || "";
+    }
+
+    async function pollVideo(id) {
+      const maxAttempts = 90;
+      const delayMs = 4000;
+
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+
+        const response = await fetch(
+          `/api/video/${encodeURIComponent(id)}`,
+          { cache: "no-store" }
+        );
+        const payload = await readJson(response);
+        const state = String(payload.status || "").toLowerCase();
+
+        videoStatus.textContent =
+          `حالة مهمة الفيديو: ${payload.status || "قيد المعالجة"} — ` +
+          `فحص ${attempt} من ${maxAttempts}.`;
+
+        if (["completed", "complete", "succeeded", "success"].includes(state)) {
+          const contentUrl = payload.videoUrl ||
+            `/api/video/${encodeURIComponent(id)}/content`;
+
+          activeVideoUrl = contentUrl;
+          videoPlayer.src = contentUrl;
+          videoPlayer.classList.remove("hidden");
+          videoOpen.href = contentUrl;
+          videoOpen.classList.remove("hidden");
+
+          videoStatus.textContent = "أفاد الخادم بأن توليد الفيديو اكتمل.";
+          setVideoResult(
+            "اكتملت المهمة. حاول تشغيل الفيديو أدناه. " +
+            "إذا تعذر تشغيله، فقد تكون هناك مشكلة في مسار استرجاع الملف."
+          );
+          return;
+        }
+
+        if (["failed", "error", "cancelled", "canceled"].includes(state)) {
+          throw new Error(
+            payload.error || `انتهت مهمة الفيديو بالحالة: ${payload.status}`
+          );
+        }
+      }
+
+      throw new Error(
+        "لم تصل المهمة إلى حالة نهائية خلال فترة الانتظار. " +
+        "لا يعني ذلك أنها فشلت؛ يمكنك إعادة المحاولة أو فحص حالة المهمة لاحقًا."
+      );
+    }
+
+    videoForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+
+      const prompt = $("videoPrompt").value.trim();
+      const image = $("videoImage").files[0];
+
+      if (!prompt) {
+        videoStatus.textContent = "اكتب وصف الفيديو أولاً.";
+        return;
+      }
+
+      if (image && image.size > 5 * 1024 * 1024) {
+        videoStatus.textContent = "حجم الصورة يجب ألا يتجاوز 5 ميغابايت.";
+        return;
+      }
+
+      const model = getSelectedModel();
+      if (!model) {
+        videoStatus.textContent = "لا يوجد نموذج صالح محدد.";
+        return;
+      }
+
+      if (image && !Array.isArray(model.supported_frame_images)) {
+        videoStatus.textContent =
+          "لم يعلن النموذج دعم صورة مرجعية في بياناته؛ اختر نموذجًا يدعمها.";
+        return;
+      }
+
+      videoBtn.disabled = true;
+      videoPlayer.pause();
+      videoPlayer.removeAttribute("src");
+      videoPlayer.load();
+      videoPlayer.classList.add("hidden");
+      videoOpen.classList.add("hidden");
+      activeVideoUrl = "";
+      setVideoResult("");
+      videoStatus.textContent = "جارٍ إرسال طلب الفيديو إلى الخادم...";
+
+      try {
+        const data = new FormData();
+        data.append("prompt", buildVideoPrompt());
+        data.append("model", model.id);
+        data.append("duration", durationSelect.value);
+        data.append("resolution", resolutionSelect.value);
+        data.append("aspect_ratio", ratioSelect.value);
+        data.append(
+          "generate_audio",
+          model.generate_audio === true ? "true" : "false"
+        );
+        if (image) data.append("image", image);
+
+        const response = await fetch("/api/video", {
+          method: "POST",
+          body: data
+        });
+
+        const payload = await readJson(response);
+
+        if (!payload.id) {
+          throw new Error(
+            "استلمنا استجابة دون معرّف مهمة؛ لا يمكن تأكيد بدء التوليد."
+          );
+        }
+
+        videoStatus.textContent =
+          `تم قبول طلب الفيديو. معرّف المهمة: ${payload.id}. جارٍ انتظار النتيجة.`;
+
+        await pollVideo(payload.id);
+      } catch (error) {
+        videoStatus.textContent = "تعذر إكمال توليد الفيديو.";
+        setVideoResult(
+          error.message +
+          "\nإذا تكرر الخطأ، أرسل لي نصه كاملًا حتى نصلح السبب."
+        );
+      } finally {
+        videoBtn.disabled = false;
+      }
+    });
+
+    $("resetVideoBtn").addEventListener("click", () => {
+      videoPlayer.pause();
+      videoPlayer.removeAttribute("src");
+      videoPlayer.load();
+      videoPlayer.classList.add("hidden");
+      videoOpen.classList.add("hidden");
+      activeVideoUrl = "";
+      setVideoResult("");
+      videoStatus.textContent = "تم مسح نتيجة الفيديو من الواجهة.";
+    });
+
+    loadModels();
   </script>
 </body>
 </html>
