@@ -25,9 +25,11 @@ async function readRequest(request) {
   if (type.includes("multipart/form-data")) {
     const form = await request.formData();
     const data = {};
+
     for (const [key, value] of form.entries()) {
       data[key] = value;
     }
+
     return data;
   }
 
@@ -36,25 +38,6 @@ async function readRequest(request) {
   }
 
   return {};
-}
-
-function imageToPart(value) {
-  if (!value || typeof value === "string") return null;
-
-  const type = value.type || "";
-  if (!type.startsWith("image/")) {
-    throw new Error("الملف المرفق ليس صورة.");
-  }
-
-  if (value.size > 5 * 1024 * 1024) {
-    throw new Error("حجم الصورة يجب ألا يتجاوز 5 ميغابايت.");
-  }
-
-  return value.arrayBuffer().then(async buffer => ({
-    type: "image",
-    mime_type: type,
-    data: arrayBufferToBase64(buffer)
-  }));
 }
 
 function arrayBufferToBase64(buffer) {
@@ -69,6 +52,30 @@ function arrayBufferToBase64(buffer) {
   }
 
   return btoa(chunks.join(""));
+}
+
+async function imageToPart(value) {
+  if (!value || typeof value === "string") {
+    return null;
+  }
+
+  const type = value.type || "";
+
+  if (!type.startsWith("image/")) {
+    throw new Error("الملف المرفق ليس صورة.");
+  }
+
+  if (value.size > 5 * 1024 * 1024) {
+    throw new Error("حجم الصورة يجب ألا يتجاوز 5 ميغابايت.");
+  }
+
+  const buffer = await value.arrayBuffer();
+
+  return {
+    type: "image",
+    mime_type: type,
+    data: arrayBufferToBase64(buffer)
+  };
 }
 
 async function askAI(env, content) {
@@ -89,6 +96,7 @@ async function askAI(env, content) {
       });
     } else if (item.type === "image_url") {
       const url = item.image_url?.url || "";
+
       const match = url.match(
         /^data:(image\/(?:jpeg|png|webp));base64,(.+)$/s
       );
@@ -125,12 +133,22 @@ async function askAI(env, content) {
     }
   );
 
-  const result = await response.json();
+  // التعديل: قراءة تفاصيل رد Gemini وإظهارها عند حدوث خطأ.
+  const responseText = await response.text();
+  let result;
+
+  try {
+    result = JSON.parse(responseText);
+  } catch {
+    result = { raw_response: responseText.slice(0, 2000) };
+  }
 
   if (!response.ok) {
+    const details = result?.error || result;
+
     throw new Error(
       `Gemini API (${response.status}): ${
-        result?.error?.message || "تعذر الاتصال بـ Gemini."
+        JSON.stringify(details)
       }`
     );
   }
@@ -156,7 +174,8 @@ async function askAI(env, content) {
 
   if (!answer) {
     throw new Error(
-      "لم يُرجع Gemini نصاً. تحقق من النموذج واستجابة API."
+      "لم يُرجع Gemini نصاً. تفاصيل الاستجابة: " +
+      JSON.stringify(result).slice(0, 1500)
     );
   }
 
@@ -184,6 +203,7 @@ async function openRouter(env, path, options = {}) {
 
   if (!response.ok) {
     const message = await response.text();
+
     throw new Error(
       `OpenRouter API (${response.status}): ${message.slice(0, 1200)}`
     );
@@ -222,12 +242,15 @@ async function makeContent(data, mode) {
     throw new Error("اكتب طلبك أولاً.");
   }
 
-  const content = [{ type: "text", text: prompt }];
+  const content = [
+    { type: "text", text: prompt }
+  ];
 
   const image = data.image || data.productImage || data.file;
 
   if (image && typeof image !== "string") {
     const part = await imageToPart(image);
+
     if (part) {
       content.push({
         type: "image_url",
@@ -236,8 +259,10 @@ async function makeContent(data, mode) {
         }
       });
     }
-  } else if (typeof image === "string" &&
-             image.startsWith("data:image/")) {
+  } else if (
+    typeof image === "string" &&
+    image.startsWith("data:image/")
+  ) {
     content.push({
       type: "image_url",
       image_url: { url: image }
@@ -280,6 +305,7 @@ export default {
           "/videos/models",
           { method: "GET" }
         );
+
         return new Response(response.body, {
           status: response.status,
           headers: {
@@ -319,7 +345,9 @@ export default {
         ).trim();
 
         if (!prompt) {
-          return json({ error: "أدخل وصف الفيديو أولاً." }, 400);
+          return json({
+            error: "أدخل وصف الفيديو أولاً."
+          }, 400);
         }
 
         const model = String(
@@ -375,7 +403,9 @@ export default {
         const index = url.searchParams.get("index") || "0";
 
         if (!validJobId(id) || !/^\d+$/.test(index)) {
-          return json({ error: "معرّف الفيديو غير صالح." }, 400);
+          return json({
+            error: "معرّف الفيديو غير صالح."
+          }, 400);
         }
 
         const response = await openRouter(
@@ -403,7 +433,9 @@ export default {
         const id = statusMatch[1];
 
         if (!validJobId(id)) {
-          return json({ error: "معرّف الفيديو غير صالح." }, 400);
+          return json({
+            error: "معرّف الفيديو غير صالح."
+          }, 400);
         }
 
         const response = await openRouter(
@@ -423,16 +455,23 @@ export default {
       }
 
       if (path.startsWith("/api/")) {
-        return json({ error: "المسار المطلوب غير موجود." }, 404);
+        return json({
+          error: "المسار المطلوب غير موجود."
+        }, 404);
       }
 
       if (env.ASSETS) {
         return env.ASSETS.fetch(request);
       }
 
-      return new Response("AI Ad Maker PRO API is running.", {
-        headers: { "Content-Type": "text/plain; charset=utf-8" }
-      });
+      return new Response(
+        "AI Ad Maker PRO API is running.",
+        {
+          headers: {
+            "Content-Type": "text/plain; charset=utf-8"
+          }
+        }
+      );
     } catch (error) {
       return json({
         ok: false,
